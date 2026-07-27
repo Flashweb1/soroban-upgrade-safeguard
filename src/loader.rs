@@ -48,6 +48,14 @@ impl fmt::Display for IntegrityError {
 
 impl std::error::Error for IntegrityError {}
 
+/// Checks that the byte slice begins with the WASM magic number (`\0asm`).
+fn check_wasm_magic(bytes: &[u8]) -> Result<()> {
+    if bytes.len() < 4 || &bytes[0..4] != b"\0asm" {
+        bail!("Not a valid WASM binary (bad magic bytes)");
+    }
+    Ok(())
+}
+
 /// Reads a WASM file from disk, validates it is a valid WASM binary,
 /// and returns a `WasmModule` ready for further analysis.
 pub fn load_wasm(path: &Path) -> Result<WasmModule> {
@@ -58,12 +66,12 @@ pub fn load_wasm(path: &Path) -> Result<WasmModule> {
     let bytes =
         std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))?;
 
-    if bytes.len() < 4 || &bytes[0..4] != b"\0asm" {
-        bail!(
+    check_wasm_magic(&bytes).with_context(|| {
+        format!(
             "'{}' does not appear to be a valid WASM binary (bad magic bytes)",
             path.display()
-        );
-    }
+        )
+    })?;
 
     validate_wasm_structure(&bytes)
         .with_context(|| format!("WASM validation failed for '{}'", path.display()))?;
@@ -250,12 +258,12 @@ pub fn fetch_wasm_from_rpc_with_policy(
         .into());
     }
 
-    if wasm_bytes.len() < 4 || &wasm_bytes[0..4] != b"\0asm" {
-        bail!(
+    check_wasm_magic(&wasm_bytes).with_context(|| {
+        format!(
             "Fetched WASM for contract '{}' has invalid magic bytes",
             contract_id
-        );
-    }
+        )
+    })?;
 
     validate_wasm_structure(&wasm_bytes).with_context(|| {
         format!(
